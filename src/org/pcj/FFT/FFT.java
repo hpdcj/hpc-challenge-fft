@@ -328,7 +328,7 @@ public class FFT extends Storage implements StartPoint {
 
     void alltoall(double[] source, double[] dest, long blockSize) {
         t_all = System.currentTimeMillis();
-        alltoall(source, dest, blockSize, true);
+        allToAllPerform(source, dest, blockSize);
         t_all = System.currentTimeMillis() - t_all;
     }
     //intermediate buffer
@@ -341,50 +341,57 @@ public class FFT extends Storage implements StartPoint {
      * "blocks" shared array
      * @param blockSize
      */
-    void alltoall(double[] source, double[] dest, long blockSize, boolean useNonBlocking) {
+    void allToAllPerform(double[] source, double[] dest, long blockSize) {
+        prepareAllToAll(blockSize, source);
+        PCJ.barrier();
+        allToAllNonBlocking(dest, blockSize);
+       //     allToAllBlocking(dest, blockSize);
+        System.arraycopy(source, PCJ.myId() * (int) (2 * blockSize), dest, PCJ.myId() * (int) (2 * blockSize), (int) (2 * blockSize));
+        PCJ.barrier();
+    }
 
+    private void allToAllBlocking(double[] dest, long blockSize) {
+        //algorithm inspired from http://www.pgas2013.org.uk/sites/default/files/finalpapers/Day1/H1/3_paper20.pdf
+        for (int image = (PCJ.myId() + 1) % PCJ.threadCount(), num = 0; num != PCJ.threadCount() - 1; image = (image + 1) % PCJ.threadCount()) {
+            double[] recv = (double[]) PCJ.get(image, "blocks", PCJ.myId());
+            System.arraycopy(recv, 0, dest, (int) (image * 2 * blockSize), (int) (2 * blockSize));
+            num++;
+        }
+    }
+
+    private void allToAllNonBlocking(double[] dest, long blockSize) {
+        //prepare futures array
+        FutureObject<double[]>[] futures = new FutureObject[PCJ.threadCount()];
+        
+        
+        //get the data 
+        for (int i = 0; i < PCJ.threadCount(); i++) {
+            if (i != PCJ.myId()) {
+                futures[i] = PCJ.getFutureObject(i, "blocks", PCJ.myId());
+            }
+        }
+        
+        int numReceived = 0;
+        while (numReceived != PCJ.threadCount() - 1) {
+            for (int i = 0; i < futures.length; i++) {
+                if (futures[i] != null && futures[i].isDone()) {
+                    double[] recv = futures[i].getObject();
+                    System.arraycopy(recv, 0, dest, (int) (i * 2 * blockSize), (int) (2 * blockSize));
+                    numReceived++;
+                    futures[i] = null;
+                }
+            }
+        }
+    }
+
+    private void prepareAllToAll(long blockSize, double[] source) {
         //1) copy information from source to blocks temporary shared array
         blocks = new double[PCJ.threadCount()][];
         for (int i = 0; i < blocks.length; i++) {
             blocks[i] = new double[(int) (2 * blockSize)];
             System.arraycopy(source, 2 * i * (int) blockSize, blocks[i], 0, (int) (2 * blockSize));
         }
-        PCJ.barrier();
-        if (useNonBlocking) {
-            //prepare futures array
-            FutureObject<double[]>[] futures = new FutureObject[PCJ.threadCount()];
-
-
-            //get the data (abarrierhronous)
-            for (int i = 0; i < PCJ.threadCount(); i++) {
-                if (i != PCJ.myId()) {
-                    futures[i] = PCJ.getFutureObject(i, "blocks", PCJ.myId());
-                }
-            }
-
-            int numReceived = 0;
-            while (numReceived != PCJ.threadCount() - 1) {
-                for (int i = 0; i < futures.length; i++) {
-                    if (futures[i] != null && futures[i].isDone()) {
-                        double[] recv = futures[i].getObject();
-                        System.arraycopy(recv, 0, dest, (int) (i * 2 * blockSize), (int) (2 * blockSize));
-                        numReceived++;
-                        futures[i] = null;
-                    }
-                }
-            }
-        } else {
-            //algorithm inspired from http://www.pgas2013.org.uk/sites/default/files/finalpapers/Day1/H1/3_paper20.pdf
-            for (int image = (PCJ.myId() + 1) % PCJ.threadCount(), num = 0; num != PCJ.threadCount() - 1; image = (image + 1) % PCJ.threadCount()) {
-                double[] recv = (double[]) PCJ.get(image, "blocks", PCJ.myId());
-                System.arraycopy(recv, 0, dest, (int) (image * 2 * blockSize), (int) (2 * blockSize));
-                num++;
-            }
-        }
-
-        System.arraycopy(source, PCJ.myId() * (int) (2 * blockSize), dest, PCJ.myId() * (int) (2 * blockSize), (int) (2 * blockSize));
-
-        PCJ.barrier();
+        PCJ.putLocal("blocks", blocks);
     }
 
     private void transpose(double[] c, long n, long n_transpose, double[] scratch, boolean forward) {
