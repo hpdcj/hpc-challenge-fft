@@ -30,7 +30,11 @@ public class FFT extends Storage implements StartPoint {
     long seed = 0;
 
     public static void main(String[] args) {
-        PCJ.start(FFT.class, FFT.class, "nodes.txt");
+        String nodesFileName = "nodes.txt";
+        if (args.length > 0) {
+            nodesFileName = args[0];
+        }
+        PCJ.start(FFT.class, FFT.class, nodesFileName);
     }
 
     public void print_array(double[] arr, String name) {
