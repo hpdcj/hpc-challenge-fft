@@ -1,4 +1,7 @@
 *.class
+.class
+
+.properties
 
 .idea
 *.iml
@@ -12,12 +15,19 @@
 *.ear
 !/gradle/**/*.jar
 
+.jar
+
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 
 # NetBeans build, dist and local dirs
+*/nbproject/
 /nbproject/
+!/nbproject/project.xml
+!/nbproject/project.properties
 /build/
+*/build/*
+/build*
 /dist/
 /out/
 /.gradle/
@@ -29,45 +39,18 @@ hs_err_pid*
 .classpath
 /.settings/
 /bin/
-
-#ant specific
-
-dist/
-
-build/
-
- 
-
-#netbeans specific
-
-core
-
-nbproject/*
-
-!nbproject/project.properties
-
-!nbproject/project.xml
-
- 
-
-#java specific
-
-*.class
-
- 
-
-#general swap/backup files
-
-*.so
-
-*.log
-
-*.out
-
-*~
-
-*.swp
-
-*.DS_Store
-
-*.lock
+CElegansGenetic/build/built-jar.properties
+CElegansGenetic/nbproject/private/private.properties
+C_Elegans_Java/nbproject/private/private.properties
+GeneticAlgorithm/nbproject/private/private.properties
+GeneticAlgorithm/build/built-jar.properties
+/MigrationStrategiesEvaluator/build/
+/MigrationStrategiesEvaluator/dist/
+/test/dist/
+/GeneticAlgorithm/dist/
+/C_Elegans_Java/dist/
+CElegansGenetic/vectors/
+C_Elegans_Java/Solver.m
+C_Elegans_Java/Solver2.m
+mathematica/Solver2.m
+mathematica/v2/.DS_Store
