@@ -120,7 +120,7 @@ public class FFT extends Storage implements StartPoint {
         t_all = 0;
 
         Random random = new Random();
-        seed = 42 * PCJ.myId();//random.nextLong();
+        seed = random.nextLong();
 
         initialize_data_array(n_local_size, local_start, rank, c);
     }
@@ -165,10 +165,10 @@ public class FFT extends Storage implements StartPoint {
         double h, h2;
         Random random = new Random(seed);
         for (i = 0; i < buffer.length / 2; i++) {
-                                 buffer[(int) (2 * i)] = PCJ.myId();
-                        buffer[(int) (2 * i) + 1] = -PCJ.myId();
-    //        buffer[(int) (2 * i)] = random.nextDouble();
-      //      buffer[(int) (2 * i) + 1] = random.nextDouble();
+    //                             buffer[(int) (2 * i)] = PCJ.myId();
+      //                  buffer[(int) (2 * i) + 1] = -PCJ.myId();
+            buffer[(int) (2 * i)] = random.nextDouble();
+            buffer[(int) (2 * i) + 1] = random.nextDouble();
         }
     }
 
