@@ -8,6 +8,7 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import org.pcj.FutureObject;
@@ -15,7 +16,6 @@ import org.pcj.PCJ;
 import org.pcj.Shared;
 import org.pcj.StartPoint;
 import org.pcj.Storage;
-
 
 public class FFT extends Storage implements StartPoint {
 
@@ -51,19 +51,15 @@ public class FFT extends Storage implements StartPoint {
         world_size = PCJ.threadCount();
         world_logsize = Utilities.number_of_bits(world_size) - 1;
         rank = PCJ.myId();
-        seed = (int) (System.currentTimeMillis() * PCJ.myId());
         BufferedReader br = new BufferedReader(new FileReader("size.txt"));
         int global_logsize = Integer.parseInt(br.readLine());
         local_logsize = global_logsize - world_logsize;
-
 
         local_size = 1 << local_logsize;
 
         bitinit();
 
         mystart = rank * local_size;
-
-
 
         long time = Long.MAX_VALUE;
         long t_all_old = Long.MAX_VALUE;
@@ -72,7 +68,7 @@ public class FFT extends Storage implements StartPoint {
             fft_init(local_size, mystart, rank);
             tstart = System.currentTimeMillis();
             fft_inner(local_size, 1L);
-            
+
             tend = System.currentTimeMillis();
             PCJ.barrier();
             if (tend - tstart < time) {
@@ -80,26 +76,25 @@ public class FFT extends Storage implements StartPoint {
                 t_all_old = t_all;
             }
         }
-        
-                if (DO_PRINT) {
+
+        if (DO_PRINT) {
             if (PCJ.myId() != 0) {
                 PCJ.waitFor("dummy");
             }
 
-            for (int i = 0; i < c.length/2; i ++) {
-                PCJ.log("#" + PCJ.myId() + " " + c[i*2] + " + " + c[i*2+1] + "i");
+            for (int i = 0; i < c.length / 2; i++) {
+                PCJ.log("#" + PCJ.myId() + " " + c[i * 2] + " + " + c[i * 2 + 1] + "i");
             }
 
             if (PCJ.myId() != PCJ.threadCount() - 1) {
                 PCJ.put(PCJ.myId() + 1, "dummy", true);
             }
         }
-                PCJ.barrier();
-    /*    PCJ.log("Starting verification");
-        fft_verif(world_size, local_size, mystart);
-        PCJ.log("Verification stoppped");*/
         PCJ.barrier();
-
+         
+         fft_verif(world_size, local_size, mystart);
+         
+        PCJ.barrier();
 
         if (rank == 0) {
             n = local_logsize + world_logsize;
@@ -109,7 +104,7 @@ public class FFT extends Storage implements StartPoint {
             gflops = ((5.0 * n * two_n) / tsec) * 1e-9;
             System.out.println("Num PEs " + +world_size + " Local size: " + local_size + " GFlops = " + gflops);
         }
- //       PCJ.log("#" + PCJ.myId() + " Alltoall time = " + t_all_old * 1e-3);
+        //       PCJ.log("#" + PCJ.myId() + " Alltoall time = " + t_all_old * 1e-3);
         System.err.flush();
         PCJ.barrier();
     }
@@ -125,7 +120,7 @@ public class FFT extends Storage implements StartPoint {
         t_all = 0;
 
         Random random = new Random();
-        seed = random.nextLong();
+        seed = 42 * PCJ.myId();//random.nextLong();
 
         initialize_data_array(n_local_size, local_start, rank, c);
     }
@@ -170,10 +165,10 @@ public class FFT extends Storage implements StartPoint {
         double h, h2;
         Random random = new Random(seed);
         for (i = 0; i < buffer.length / 2; i++) {
-                 //                buffer[(int) (2 * i)] = i + local_start + 1;
-                   //            buffer[(int) (2 * i) + 1] = 0;
-            buffer[(int) (2 * i)] = random.nextDouble();
-            buffer[(int) (2 * i) + 1] = random.nextDouble();
+                                 buffer[(int) (2 * i)] = PCJ.myId();
+                        buffer[(int) (2 * i) + 1] = -PCJ.myId();
+    //        buffer[(int) (2 * i)] = random.nextDouble();
+      //      buffer[(int) (2 * i) + 1] = random.nextDouble();
         }
     }
 
@@ -346,11 +341,93 @@ public class FFT extends Storage implements StartPoint {
      * @param blockSize
      */
     void allToAllPerform(double[] source, double[] dest, long blockSize) {
+        /*
         prepareAllToAll(blockSize, source);
         PCJ.barrier();
-        allToAllNonBlocking(dest, blockSize);
-       //     allToAllBlocking(dest, blockSize);
+        allToAllNonBlocking(dest, blockSize);  
+          //   allToAllBlocking(dest, blockSize);
         System.arraycopy(source, PCJ.myId() * (int) (2 * blockSize), dest, PCJ.myId() * (int) (2 * blockSize), (int) (2 * blockSize));
+        PCJ.barrier();
+        System.arraycopy(source, PCJ.myId() * (int) (2 * blockSize), dest, PCJ.myId() * (int) (2 * blockSize), (int) (2 * blockSize));
+                if (PCJ.myId() == 0 || PCJ.myId() == 1) {
+            System.out.println(PCJ.myId() + " we" + Arrays.toString(source));
+            System.out.println(PCJ.myId() + " wy" + Arrays.toString(dest));
+        } */    
+        
+        alltoallHypercube(source, dest, blockSize);
+      /*  System.arraycopy(source, PCJ.myId() * (int) (2 * blockSize), dest, PCJ.myId() * (int) (2 * blockSize), (int) (2 * blockSize));
+                if (PCJ.myId() == 0 || PCJ.myId() == 1) {
+            System.out.println(PCJ.myId() + " we" + Arrays.toString(source));
+            System.out.println(PCJ.myId() + " wy" + Arrays.toString(dest));
+        }*/
+    }
+
+    @Shared
+    double[][][] blocksHypercube;
+
+    double[][] blocked;
+
+    private void alltoallHypercube(double[] src, double[] dest, long blockSize) {
+        PCJ.barrier();
+        blocked = new double[PCJ.threadCount()][(int) (2 * blockSize)];
+        for (int i = 0; i < blocked.length; i++) {
+            System.arraycopy(src, i * 2 * (int) blockSize, blocked[i], 0, (int) (2 * blockSize));
+        }
+        //all-to-all hypercube personalized communication, per 
+        //http://www.sandia.gov/~sjplimp/docs/cluster06.pdf, p. 5.
+        int logNumProcs = (int) (Math.log(PCJ.threadCount()) / Math.log(2));
+        double[][][] blocksLocal = new double[logNumProcs][][];
+        PCJ.putLocal("blocksHypercube", blocksLocal);
+        PCJ.barrier();
+        int myId = PCJ.myId();
+
+        double[][] toSend = new double[PCJ.threadCount() / 2][];
+        for (int dimension = 0; dimension < logNumProcs; dimension++) {
+
+            int partner = (1 << dimension) ^ myId;
+
+            long mask = 1L << dimension;
+            int j = 0;
+            for (int i = 0; i < PCJ.threadCount(); i++) {
+                if (partner < myId) {
+                    if ((i & mask) == 0) {
+                        toSend[j++] = blocked[i];
+                    }
+                } else {
+                    if ((i & mask) != 0) {
+                        toSend[j++] = blocked[i];
+                    }
+                }
+            }
+
+            PCJ.put(partner, "blocksHypercube", toSend, dimension);
+
+            //wait to receive
+            double[][] checked = null;
+            while (checked == null) {
+                j = 0;
+                checked = PCJ.getLocal("blocksHypercube", dimension);
+                if (checked != null) {
+
+                    PCJ.putLocal("blocksHypercube", null, dimension);
+                    for (int i = 0; i < PCJ.threadCount(); i++) {
+                        if (partner < myId) {
+                            if ((i & mask) == 0) {
+                                blocked[i] = checked[j++];
+                            }
+                        } else {
+                            if ((i & mask) != 0) {
+                                blocked[i] = checked[j++];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < blocked.length; i++) {
+            System.arraycopy(blocked[i], 0, dest, i * 2 * (int) blockSize, (int) (2 * blockSize));
+        }
         PCJ.barrier();
     }
 
@@ -366,15 +443,14 @@ public class FFT extends Storage implements StartPoint {
     private void allToAllNonBlocking(double[] dest, long blockSize) {
         //prepare futures array
         FutureObject<double[]>[] futures = new FutureObject[PCJ.threadCount()];
-        
-        
+
         //get the data 
         for (int i = 0; i < PCJ.threadCount(); i++) {
             if (i != PCJ.myId()) {
                 futures[i] = PCJ.getFutureObject(i, "blocks", PCJ.myId());
             }
         }
-        
+
         int numReceived = 0;
         while (numReceived != PCJ.threadCount() - 1) {
             for (int i = 0; i < futures.length; i++) {
