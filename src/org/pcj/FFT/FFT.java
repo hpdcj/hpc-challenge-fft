@@ -341,20 +341,20 @@ public class FFT extends Storage implements StartPoint {
      * @param blockSize
      */
     void allToAllPerform(double[] source, double[] dest, long blockSize) {
-        /*
+        
         prepareAllToAll(blockSize, source);
         PCJ.barrier();
-        allToAllNonBlocking(dest, blockSize);  
-          //   allToAllBlocking(dest, blockSize);
+       // allToAllNonBlocking(dest, blockSize);  
+             allToAllBlocking(dest, blockSize);
         System.arraycopy(source, PCJ.myId() * (int) (2 * blockSize), dest, PCJ.myId() * (int) (2 * blockSize), (int) (2 * blockSize));
         PCJ.barrier();
-        System.arraycopy(source, PCJ.myId() * (int) (2 * blockSize), dest, PCJ.myId() * (int) (2 * blockSize), (int) (2 * blockSize));
+       /* System.arraycopy(source, PCJ.myId() * (int) (2 * blockSize), dest, PCJ.myId() * (int) (2 * blockSize), (int) (2 * blockSize));
                 if (PCJ.myId() == 0 || PCJ.myId() == 1) {
             System.out.println(PCJ.myId() + " we" + Arrays.toString(source));
             System.out.println(PCJ.myId() + " wy" + Arrays.toString(dest));
         } */    
         
-        alltoallHypercube(source, dest, blockSize);
+      //  alltoallHypercube(source, dest, blockSize);
       /*  System.arraycopy(source, PCJ.myId() * (int) (2 * blockSize), dest, PCJ.myId() * (int) (2 * blockSize), (int) (2 * blockSize));
                 if (PCJ.myId() == 0 || PCJ.myId() == 1) {
             System.out.println(PCJ.myId() + " we" + Arrays.toString(source));
