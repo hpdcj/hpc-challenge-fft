@@ -21,36 +21,16 @@
 hs_err_pid*
 
 # NetBeans build, dist and local dirs
-*/nbproject/
-/nbproject/
-!/nbproject/project.xml
-!/nbproject/project.properties
-/build/
-*/build/*
-/build*
-/dist/
-/out/
-/.gradle/
-/.nb-gradle/
-/.nb-gradle-properties
+nbproject/private/
+build/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
 
 # Eclipse configuration and build output
 .project
 .classpath
 /.settings/
 /bin/
-CElegansGenetic/build/built-jar.properties
-CElegansGenetic/nbproject/private/private.properties
-C_Elegans_Java/nbproject/private/private.properties
-GeneticAlgorithm/nbproject/private/private.properties
-GeneticAlgorithm/build/built-jar.properties
-/MigrationStrategiesEvaluator/build/
-/MigrationStrategiesEvaluator/dist/
-/test/dist/
-/GeneticAlgorithm/dist/
-/C_Elegans_Java/dist/
-CElegansGenetic/vectors/
-C_Elegans_Java/Solver.m
-C_Elegans_Java/Solver2.m
-mathematica/Solver2.m
-mathematica/v2/.DS_Store
+
