@@ -6,22 +6,34 @@ package org.pcj.FFT;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
-import org.pcj.FutureObject;
+import org.pcj.NodesDescription;
 import org.pcj.PCJ;
-import org.pcj.Shared;
+import org.pcj.PcjFuture;
+import org.pcj.RegisterStorage;
 import org.pcj.StartPoint;
 import org.pcj.Storage;
 
-public class FFT extends Storage implements StartPoint {
+@RegisterStorage(FFT.Shared.class)
+public class FFT implements StartPoint {
 
     public final static boolean DO_PRINT = false;
-    @Shared
+    
+    @Storage (FFT.class)
+    enum Shared {
+        dummy, blocks, blocksHypercube
+    }
+    
     public boolean dummy = false;
+    double[][] blocks;
+    double[][][] blocksHypercube;
+    
+    
     long n, two_n, world_size, world_logsize;
     long local_size, local_logsize;
     long tstart, tend, rate, mystart, rank;
@@ -29,12 +41,12 @@ public class FFT extends Storage implements StartPoint {
     long t_all = 0;
     long seed = 0;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         String nodesFileName = "nodes.txt";
         if (args.length > 0) {
             nodesFileName = args[0];
         }
-        PCJ.start(FFT.class, FFT.class, nodesFileName);
+        PCJ.start(FFT.class, new NodesDescription(nodesFileName));
     }
 
     public void print_array(double[] arr, String name) {
@@ -43,7 +55,7 @@ public class FFT extends Storage implements StartPoint {
         for (int z = 0; z < arr.length / 2; z++) {
             out += "#" + PCJ.myId() + " " + name + " = " + arr[2 * z] + " " + arr[2 * z + 1] + "i\n";
         }
-        PCJ.log(out);
+        System.out.println(out);
     }
 
     @Override
@@ -79,15 +91,15 @@ public class FFT extends Storage implements StartPoint {
 
         if (DO_PRINT) {
             if (PCJ.myId() != 0) {
-                PCJ.waitFor("dummy");
+                PCJ.waitFor(Shared.dummy);
             }
 
             for (int i = 0; i < c.length / 2; i++) {
-                PCJ.log("#" + PCJ.myId() + " " + c[i * 2] + " + " + c[i * 2 + 1] + "i");
+                System.out.println("#" + PCJ.myId() + " " + c[i * 2] + " + " + c[i * 2 + 1] + "i");
             }
 
             if (PCJ.myId() != PCJ.threadCount() - 1) {
-                PCJ.put(PCJ.myId() + 1, "dummy", true);
+                PCJ.put(true, PCJ.myId() + 1, Shared.dummy);
             }
         }
         PCJ.barrier();
@@ -331,8 +343,7 @@ public class FFT extends Storage implements StartPoint {
         t_all = System.currentTimeMillis() - t_all;
     }
     //intermediate buffer
-    @Shared
-    double[][] blocks;
+
 
     /**
      *
@@ -362,8 +373,7 @@ public class FFT extends Storage implements StartPoint {
         }*/
     }
 
-    @Shared
-    double[][][] blocksHypercube;
+
 
     double[][] blocked;
 
@@ -377,7 +387,7 @@ public class FFT extends Storage implements StartPoint {
         //http://www.sandia.gov/~sjplimp/docs/cluster06.pdf, p. 5.
         int logNumProcs = (int) (Math.log(PCJ.threadCount()) / Math.log(2));
         double[][][] blocksLocal = new double[logNumProcs][][];
-        PCJ.putLocal("blocksHypercube", blocksLocal);
+        PCJ.putLocal(Shared.blocksHypercube, blocksLocal);
         PCJ.barrier();
         int myId = PCJ.myId();
 
@@ -400,16 +410,16 @@ public class FFT extends Storage implements StartPoint {
                 }
             }
 
-            PCJ.put(partner, "blocksHypercube", toSend, dimension);
+            PCJ.put(toSend, partner, Shared.blocksHypercube, dimension);
 
             //wait to receive
             double[][] checked = null;
             while (checked == null) {
                 j = 0;
-                checked = PCJ.getLocal("blocksHypercube", dimension);
+                checked = PCJ.getLocal(Shared.blocksHypercube, dimension);
                 if (checked != null) {
 
-                    PCJ.putLocal("blocksHypercube", null, dimension);
+                    PCJ.putLocal(Shared.blocksHypercube, null, dimension);
                     for (int i = 0; i < PCJ.threadCount(); i++) {
                         if (partner < myId) {
                             if ((i & mask) == 0) {
@@ -434,7 +444,7 @@ public class FFT extends Storage implements StartPoint {
     private void allToAllBlocking(double[] dest, long blockSize) {
         //algorithm inspired from http://www.pgas2013.org.uk/sites/default/files/finalpapers/Day1/H1/3_paper20.pdf
         for (int image = (PCJ.myId() + 1) % PCJ.threadCount(), num = 0; num != PCJ.threadCount() - 1; image = (image + 1) % PCJ.threadCount()) {
-            double[] recv = (double[]) PCJ.get(image, "blocks", PCJ.myId());
+            double[] recv = (double[]) PCJ.get(image, Shared.blocks, PCJ.myId());
             System.arraycopy(recv, 0, dest, (int) (image * 2 * blockSize), (int) (2 * blockSize));
             num++;
         }
@@ -442,12 +452,12 @@ public class FFT extends Storage implements StartPoint {
 
     private void allToAllNonBlocking(double[] dest, long blockSize) {
         //prepare futures array
-        FutureObject<double[]>[] futures = new FutureObject[PCJ.threadCount()];
+        PcjFuture<double[]>[] futures = new PcjFuture[PCJ.threadCount()];
 
         //get the data 
         for (int i = 0; i < PCJ.threadCount(); i++) {
             if (i != PCJ.myId()) {
-                futures[i] = PCJ.getFutureObject(i, "blocks", PCJ.myId());
+                futures[i] = PCJ.asyncGet(i, Shared.blocks, PCJ.myId());
             }
         }
 
@@ -455,7 +465,7 @@ public class FFT extends Storage implements StartPoint {
         while (numReceived != PCJ.threadCount() - 1) {
             for (int i = 0; i < futures.length; i++) {
                 if (futures[i] != null && futures[i].isDone()) {
-                    double[] recv = futures[i].getObject();
+                    double[] recv = futures[i].get();
                     System.arraycopy(recv, 0, dest, (int) (i * 2 * blockSize), (int) (2 * blockSize));
                     numReceived++;
                     futures[i] = null;
@@ -471,7 +481,7 @@ public class FFT extends Storage implements StartPoint {
             blocks[i] = new double[(int) (2 * blockSize)];
             System.arraycopy(source, 2 * i * (int) blockSize, blocks[i], 0, (int) (2 * blockSize));
         }
-        PCJ.putLocal("blocks", blocks);
+        PCJ.putLocal(Shared.blocks, blocks);
     }
 
     private void transpose(double[] c, long n, long n_transpose, double[] scratch, boolean forward) {
@@ -536,12 +546,12 @@ public class FFT extends Storage implements StartPoint {
         logm = Utilities.number_of_bits(world_size) - 1 + Utilities.number_of_bits(n_local_size) - 1;
         residue = (max_error / epsilon) / logm;
         if (residue < max_residue && rank == 0) {
-            PCJ.log("Verification successful");
+            System.out.println("Verification successful");
         } else {
             if (residue >= max_residue) {
-                PCJ.log("Verification failed (residue = " + residue + ")");
-                PCJ.log("   Max error: " + max_error);
-                PCJ.log("   In: (" + c[(int) mei] + "); Out: (" + spare[(int) mei] + ")");
+                System.out.println("Verification failed (residue = " + residue + ")");
+                System.out.println("   Max error: " + max_error);
+                System.out.println("   In: (" + c[(int) mei] + "); Out: (" + spare[(int) mei] + ")");
             }
         }
     }
