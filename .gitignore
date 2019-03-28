@@ -4,6 +4,7 @@
 .properties
 
 .idea
+.gradle
 *.iml
 
 # Mobile Tools for Java (J2ME)

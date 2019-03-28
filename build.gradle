@@ -1,0 +1,45 @@
+apply plugin: 'java'
+
+compileJava.options.encoding = 'UTF-8'
+sourceCompatibility = '1.8'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'pl.edu.icm.pcj:pcj:5.0.8'
+    annotationProcessor 'pl.edu.icm.pcj:pcj:5.0.8'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src']
+        }
+    }
+}
+
+if (!hasProperty('mainClass')) {
+    ext.mainClass = 'org.pcj.FFT.FFT'
+}
+
+tasks.withType(Jar) {
+    destinationDirectory = file("${buildDir}/dist")
+}
+
+task copyToLib(type: Copy) {
+    from configurations.runtimeClasspath
+    into "${buildDir}/dist/libs"
+}
+
+jar.dependsOn(copyToLib)
+
+jar {
+    manifest {
+        attributes 'Implementation-Title': project.name,
+                'Main-Class': project.ext.mainClass,
+                'Class-Path': configurations.runtimeClasspath.files.collect { "libs/$it.name" }.join(' ')
+    }
+}
+
