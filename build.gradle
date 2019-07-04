@@ -8,8 +8,10 @@ repositories {
 }
 
 dependencies {
-    implementation 'pl.edu.icm.pcj:pcj:5.0.8'
-    annotationProcessor 'pl.edu.icm.pcj:pcj:5.0.8'
+    implementation files('../PCJ-libs/pcj-5.1.0-SNAPSHOT.jar')
+    annotationProcessor files('../PCJ-libs/pcj-5.1.0-SNAPSHOT.jar')
+    //implementation 'pl.edu.icm.pcj:pcj:5.0.8'
+    //annotationProcessor 'pl.edu.icm.pcj:pcj:5.0.8'
 }
 
 sourceSets {

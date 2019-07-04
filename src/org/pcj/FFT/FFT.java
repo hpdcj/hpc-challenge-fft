@@ -1,10 +1,11 @@
 package org.pcj.FFT;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.Random;
-import org.pcj.NodesDescription;
+import org.pcj.ExecutionBuilder;
 import org.pcj.PCJ;
 import org.pcj.PcjFuture;
 import org.pcj.RegisterStorage;
@@ -38,7 +39,16 @@ public class FFT implements StartPoint {
         if (args.length > 0) {
             nodesFileName = args[0];
         }
-        PCJ.start(FFT.class, new NodesDescription(nodesFileName));
+
+        ExecutionBuilder executionBuilder = PCJ.executionBuilder(FFT.class)
+                .addNodes(new File(nodesFileName));
+
+        try (BufferedReader br = new BufferedReader(new FileReader("size.txt"))) {
+            executionBuilder.addProperty("size", br.readLine());
+        }
+
+        executionBuilder.start();
+//        PCJ.start(FFT.class, new NodesDescription(nodesFileName));
     }
 
     public void print_array(double[] arr, String name) {
@@ -55,8 +65,7 @@ public class FFT implements StartPoint {
         world_size = PCJ.threadCount();
         world_logsize = Utilities.number_of_bits(world_size) - 1L;
         rank = PCJ.myId();
-        BufferedReader br = new BufferedReader(new FileReader("size.txt"));
-        int global_logsize = Integer.parseInt(br.readLine());
+        int global_logsize = Integer.parseInt(PCJ.getProperty("size"));
         local_logsize = global_logsize - world_logsize;
 
         local_size = 1L << local_logsize;
