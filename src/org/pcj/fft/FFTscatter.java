@@ -1,29 +1,27 @@
-package org.pcj.FFT;
+package org.pcj.fft;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.Random;
-import org.pcj.NodesDescription;
 import org.pcj.PCJ;
-import org.pcj.PcjFuture;
 import org.pcj.RegisterStorage;
 import org.pcj.StartPoint;
 import org.pcj.Storage;
 
-@RegisterStorage(FFT.Shared.class)
-public class FFT implements StartPoint {
+@RegisterStorage(FFTscatter.Shareable.class)
+public class FFTscatter implements StartPoint {
 
     public final static boolean DO_PRINT = false;
 
-    @Storage(FFT.class)
-    enum Shared {
-        dummy, blocks, blocksHypercube
+    @Storage(FFTscatter.class)
+    enum Shareable {
+        dummy, blocks
     }
 
     private boolean dummy;
-    private double[][] blocks;
-    private double[][][] blocksHypercube;
+    private double[][] blocks = new double[PCJ.threadCount()][];
 
 
     private long n, two_n, world_size, world_logsize;
@@ -34,11 +32,9 @@ public class FFT implements StartPoint {
     private long seed = 0L;
 
     public static void main(String[] args) throws IOException {
-        String nodesFileName = "nodes.txt";
-        if (args.length > 0) {
-            nodesFileName = args[0];
-        }
-        PCJ.start(FFT.class, new NodesDescription(nodesFileName));
+        PCJ.executionBuilder(FFTscatter.class)
+                .addNodes(new File(args.length > 0 ? args[0] : "nodes.txt"))
+                .start();
     }
 
     public void print_array(double[] arr, String name) {
@@ -53,7 +49,7 @@ public class FFT implements StartPoint {
     @Override
     public void main() throws Throwable {
         world_size = PCJ.threadCount();
-        world_logsize = Utilities.number_of_bits(world_size) - 1L;
+        world_logsize = number_of_bits(world_size) - 1L;
         rank = PCJ.myId();
         BufferedReader br = new BufferedReader(new FileReader("size.txt"));
         int global_logsize = Integer.parseInt(br.readLine());
@@ -83,7 +79,7 @@ public class FFT implements StartPoint {
 
         if (DO_PRINT) {
             if (PCJ.myId() != 0L) {
-                PCJ.waitFor(Shared.dummy);
+                PCJ.waitFor(Shareable.dummy);
             }
 
             for (int i = 0; i < c.length / 2; i++) {
@@ -91,7 +87,7 @@ public class FFT implements StartPoint {
             }
 
             if (PCJ.myId() != PCJ.threadCount() - 1) {
-                PCJ.put(true, PCJ.myId() + 1, Shared.dummy);
+                PCJ.put(true, PCJ.myId() + 1, Shareable.dummy);
             }
         }
         PCJ.barrier();
@@ -108,7 +104,6 @@ public class FFT implements StartPoint {
             gflops = ((5.0d * n * two_n) / tsec) * 1e-9;
             System.out.println("Num PEs " + +world_size + " Local size: " + local_size + " GFlops = " + gflops);
         }
-        //       PCJ.log("#" + PCJ.myId() + " Alltoall time = " + t_all_old * 1e-9);
         System.err.flush();
         PCJ.barrier();
     }
@@ -190,8 +185,8 @@ public class FFT implements StartPoint {
         n_world_size = world_size * n_local_size;
         two_pi = 2.0d * Math.PI * direction;
 
-        levels = Utilities.number_of_bits(n_world_size) - 1L;
-        loc_comm = Utilities.number_of_bits(n_local_size);
+        levels = number_of_bits(n_world_size) - 1L;
+        loc_comm = number_of_bits(n_local_size);
         long tt = 0L;
 
         long t1 = System.nanoTime();
@@ -297,7 +292,7 @@ public class FFT implements StartPoint {
 
         p_b = cp_b;
 
-        p_bits = Utilities.number_of_bits(p - 1L);
+        p_bits = number_of_bits(p - 1L);
         pe_buflen = n / p + npadding;
 
         if (do_bitreverse) {
@@ -345,136 +340,21 @@ public class FFT implements StartPoint {
      * @param blockSize
      */
     void allToAllPerform(double[] source, double[] dest, long blockSize) {
-
-        prepareAllToAll(blockSize, source);
-        //     PCJ.barrier();
-        //   allToAllNonBlocking(dest, blockSize);
-        // allToAllBlocking(dest, blockSize);
-        //   System.arraycopy(source, PCJ.myId() * (int) (2L * blockSize), dest, PCJ.myId() * (int) (2L * blockSize), (int) (2L * blockSize));
-        PCJ.barrier();
-       /* System.arraycopy(source, PCJ.myId() * (int) (2L * blockSize), dest, PCJ.myId() * (int) (2L * blockSize), (int) (2L * blockSize));
-                if (PCJ.myId() == 0L || PCJ.myId() == 1L) {
-            System.out.println(PCJ.myId() + " we" + Arrays.toString(source));
-            System.out.println(PCJ.myId() + " wy" + Arrays.toString(dest));
-        } */
-
-        alltoallHypercube(source, dest, blockSize);
-      /*  System.arraycopy(source, PCJ.myId() * (int) (2L * blockSize), dest, PCJ.myId() * (int) (2L * blockSize), (int) (2L * blockSize));
-                if (PCJ.myId() == 0L || PCJ.myId() == 1L) {
-            System.out.println(PCJ.myId() + " we" + Arrays.toString(source));
-            System.out.println(PCJ.myId() + " wy" + Arrays.toString(dest));
-        }*/
-    }
-
-
-    private double[][] blocked;
-
-    private void alltoallHypercube(double[] src, double[] dest, long blockSize) {
-        PCJ.barrier();
-        blocked = new double[PCJ.threadCount()][(int) (2L * blockSize)];
-        for (int i = 0; i < blocked.length; i++) {
-            System.arraycopy(src, i * 2 * (int) blockSize, blocked[i], 0, (int) (2 * blockSize));
+        double[][] toScatter = new double[PCJ.threadCount()][];
+        for (int i = 0; i < toScatter.length; i++) {
+            toScatter[i] = new double[(int) (2 * blockSize)];
+            System.arraycopy(source, (int) (2 * i * blockSize), toScatter[i], 0, (int) (2 * blockSize));
         }
-        //all-to-all hypercube personalized communication, per
-        //http://www.sandia.gov/~sjplimp/docs/cluster06.pdf, p. 5.
-        int logNumProcs = (int) (Math.log(PCJ.threadCount()) / Math.log(2.0d));
-        double[][][] blocksLocal = new double[logNumProcs][][];
-        PCJ.putLocal(blocksLocal, Shared.blocksHypercube);
-        PCJ.barrier();
-        int myId = PCJ.myId();
+        PCJ.scatter(toScatter, Shareable.blocks, PCJ.myId());
 
-        double[][] toSend = new double[PCJ.threadCount() / 2][];
-        for (int dimension = 0; dimension < logNumProcs; dimension++) {
-
-            int partner = (1 << dimension) ^ myId;
-
-            long mask = 1L << dimension;
-            int j = 0;
-            for (int i = 0; i < PCJ.threadCount(); i++) {
-                if (partner < myId) {
-                    if ((i & mask) == 0) {
-                        toSend[j++] = blocked[i];
-                    }
-                } else {
-                    if ((i & mask) != 0) {
-                        toSend[j++] = blocked[i];
-                    }
-                }
-            }
-
-            PCJ.put(toSend, partner, Shared.blocksHypercube, dimension);
-
-            //wait to receive
-            double[][] checked = null;
-            while (checked == null) {
-                j = 0;
-                checked = PCJ.getLocal(Shared.blocksHypercube, dimension);
-                if (checked != null) {
-
-                    PCJ.putLocal(null, Shared.blocksHypercube, dimension);
-                    for (int i = 0; i < PCJ.threadCount(); i++) {
-                        if (partner < myId) {
-                            if ((i & mask) == 0) {
-                                blocked[i] = checked[j++];
-                            }
-                        } else {
-                            if ((i & mask) != 0) {
-                                blocked[i] = checked[j++];
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        for (int i = 0; i < blocked.length; i++) {
-            System.arraycopy(blocked[i], 0, dest, (int) (i * 2 * blockSize), (int) (2 * blockSize));
+        PCJ.waitFor(Shareable.blocks, PCJ.threadCount());
+        for (int i = 0; i < blocks.length; ++i) {
+            System.arraycopy(blocks[i], 0, dest, (int) (i * 2 * blockSize), (int) (2 * blockSize));
+            blocks[i]=null;
         }
         PCJ.barrier();
     }
 
-    private void allToAllBlocking(double[] dest, long blockSize) {
-        //algorithm inspired from http://www.pgas2013.org.uk/sites/default/files/finalpapers/Day1/H1/3_paper20.pdf
-        for (int image = (PCJ.myId() + 1) % PCJ.threadCount(), num = 0; num != PCJ.threadCount() - 1; image = (image + 1) % PCJ.threadCount()) {
-            double[] recv = (double[]) PCJ.get(image, Shared.blocks, PCJ.myId());
-            System.arraycopy(recv, 0, dest, (int) (image * 2 * blockSize), (int) (2 * blockSize));
-            num++;
-        }
-    }
-
-    private void allToAllNonBlocking(double[] dest, long blockSize) {
-        //prepare futures array
-        PcjFuture<double[]>[] futures = new PcjFuture[PCJ.threadCount()];
-
-        //get the data
-        for (int i = 0; i < PCJ.threadCount(); i++) {
-            if (i != PCJ.myId()) {
-                futures[i] = PCJ.asyncGet(i, Shared.blocks, PCJ.myId());
-            }
-        }
-
-        int numReceived = 0;
-        while (numReceived != PCJ.threadCount() - 1) {
-            for (int i = 0; i < futures.length; i++) {
-                if (futures[i] != null && futures[i].isDone()) {
-                    double[] recv = futures[i].get();
-                    System.arraycopy(recv, 0, dest, (int) (i * 2 * blockSize), (int) (2 * blockSize));
-                    numReceived++;
-                    futures[i] = null;
-                }
-            }
-        }
-    }
-
-    private void prepareAllToAll(long blockSize, double[] source) {
-        //1) copy information from source to blocks temporary shared array
-        blocks = new double[PCJ.threadCount()][];
-        for (int i = 0; i < blocks.length; i++) {
-            blocks[i] = new double[(int) (2 * blockSize)];
-            System.arraycopy(source, (int) (2 * i * blockSize), blocks[i], 0, (int) (2 * blockSize));
-        }
-        PCJ.putLocal(blocks, Shared.blocks);
-    }
 
     private void transpose(double[] c, long n, long n_transpose, double[] scratch, boolean forward) {
         long world_size = PCJ.threadCount();
@@ -535,7 +415,7 @@ public class FFT implements StartPoint {
             max_error = Math.max(max_error, error);
         }
 
-        logm = Utilities.number_of_bits(world_size) - 1L + Utilities.number_of_bits(n_local_size) - 1L;
+        logm = number_of_bits(world_size) - 1L + number_of_bits(n_local_size) - 1L;
         residue = (max_error / epsilon) / logm;
         if (residue < max_residue && rank == 0L) {
             System.out.println("Verification successful");
@@ -553,7 +433,7 @@ public class FFT implements StartPoint {
 
         n_b = cn_b;
 
-        n_bits = Utilities.number_of_bits(n - 1L);
+        n_bits = number_of_bits(n - 1L);
 
         if (n_b > n) {
             n_b = n;
@@ -565,6 +445,15 @@ public class FFT implements StartPoint {
                 dest[(int) (2L * i_bitreverse(i, n_bits) + 1L)] = src[(int) (2L * i + 1L)];
             }
         }
+    }
+
+    private static int number_of_bits(long num) {
+        int n = 0;
+        while (num > 0) {
+            n++;
+            num >>>= 1;
+        }
+        return n;
     }
 }
 

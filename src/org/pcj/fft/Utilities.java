@@ -1,16 +1,11 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
-package org.pcj.FFT;
+package org.pcj.fft;
 
 /**
- *
  * @author Łukasz Górski <lgorski@mat.umk.pl>
  */
 public class Utilities {
-    
-    public static int number_of_bits (long num) {
+
+    public static int number_of_bits(long num) {
         int n = 0;
         while (num > 0) {
             n++;
@@ -18,5 +13,4 @@ public class Utilities {
         }
         return n;
     }
-    
 }
