@@ -4,7 +4,12 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.pcj.PCJ;
 import org.pcj.RegisterStorage;
 import org.pcj.StartPoint;
@@ -340,17 +345,30 @@ public class FFTscatter implements StartPoint {
      * @param blockSize
      */
     void allToAllPerform(double[] source, double[] dest, long blockSize) {
-        double[][] toScatter = new double[PCJ.threadCount()][];
-        for (int i = 0; i < toScatter.length; i++) {
-            toScatter[i] = new double[(int) (2 * blockSize)];
-            System.arraycopy(source, (int) (2 * i * blockSize), toScatter[i], 0, (int) (2 * blockSize));
-        }
-        PCJ.scatter(toScatter, Shareable.blocks, PCJ.myId());
+//        Map<Integer, double[]> toSendMap
+//                = IntStream.range(0, PCJ.threadCount())
+//                          .collect(HashMap::new,
+//                                  (m, i) -> {
+//                                      double[] toScatter = new double[(int) (2 * blockSize)];
+//                                      System.arraycopy(source, (int) (2 * i * blockSize), toScatter, 0, (int) (2 * blockSize));
+//                                      m.put(i, toScatter);
+//                                  },
+//                                  Map::putAll);
+        Map<Integer, double[]> toSendMap = IntStream.range(0, PCJ.threadCount())
+                .boxed()
+                .collect(Collectors.toMap(
+                        Function.identity(),
+                        i -> {
+                            double[] toScatter = new double[(int) (2 * blockSize)];
+                            System.arraycopy(source, (int) (2 * i * blockSize), toScatter, 0, (int) (2 * blockSize));
+                            return toScatter;
+                        }));
+        PCJ.scatter(toSendMap, Shareable.blocks, PCJ.myId());
 
         PCJ.waitFor(Shareable.blocks, PCJ.threadCount());
         for (int i = 0; i < blocks.length; ++i) {
             System.arraycopy(blocks[i], 0, dest, (int) (i * 2 * blockSize), (int) (2 * blockSize));
-            blocks[i]=null;
+            blocks[i] = null;
         }
         PCJ.barrier();
     }

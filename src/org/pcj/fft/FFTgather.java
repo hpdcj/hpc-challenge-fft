@@ -4,18 +4,21 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.Map;
 import java.util.Random;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 import org.pcj.PCJ;
 import org.pcj.RegisterStorage;
 import org.pcj.StartPoint;
 import org.pcj.Storage;
 
-@RegisterStorage(FFTcollect.Shareable.class)
-public class FFTcollect implements StartPoint {
+@RegisterStorage(FFTgather.Shareable.class)
+public class FFTgather implements StartPoint {
 
     public final static boolean DO_PRINT = false;
 
-    @Storage(FFTcollect.class)
+    @Storage(FFTgather.class)
     enum Shareable {
         dummy, blocks
     }
@@ -32,7 +35,7 @@ public class FFTcollect implements StartPoint {
     private long seed = 0L;
 
     public static void main(String[] args) throws IOException {
-        PCJ.executionBuilder(FFTcollect.class)
+        PCJ.executionBuilder(FFTgather.class)
                 .addNodes(new File(args.length > 0 ? args[0] : "nodes.txt"))
                 .start();
     }
@@ -352,23 +355,11 @@ public class FFTcollect implements StartPoint {
     private double[][] blocked;
 
     private void allToAllCollect(double[] dest, long blockSize) {
-        //algorithm inspired from http://www.pgas2013.org.uk/sites/default/files/finalpapers/Day1/H1/3_paper20.pdf
-//        for (int image = (PCJ.myId() + 1) % PCJ.threadCount(), num = 0; num != PCJ.threadCount() - 1; image = (image + 1) % PCJ.threadCount()) {
-//            double[] recv = (double[]) PCJ.get(image, Shareable.blocks, PCJ.myId());
-//            System.arraycopy(recv, 0, dest, (int) (image * 2 * blockSize), (int) (2 * blockSize));
-//            num++;
-//        }
-        int image = 0;
+        Map<Integer, double[]> allRecv = PCJ.gather(Shareable.blocks, PCJ.myId());
 
-        double[][] allRecv = PCJ.<double[][]>collect(Shareable.blocks, PCJ.myId());
-//for (int i=0;i<PCJ.threadCount();++i) {
-//if (i==PCJ.myId())
-//System.out.println(PCJ.myId()+" allRecv[]: " + java.util.Arrays.toString(allRecv));
-//PCJ.barrier();
-//}
-        for (double[] recv : allRecv) {
-            System.arraycopy(recv, 0, dest, (int) (image * 2 * blockSize), (int) (2 * blockSize));
-            ++image;
+        for (Map.Entry<Integer, double[]> recv : allRecv.entrySet()) {
+            System.arraycopy(recv.getValue(), 0,
+                    dest, (int) (recv.getKey() * 2 * blockSize), (int) (2 * blockSize));
         }
     }
 
@@ -379,11 +370,7 @@ public class FFTcollect implements StartPoint {
             blocks[i] = new double[(int) (2 * blockSize)];
             System.arraycopy(source, (int) (2 * i * blockSize), blocks[i], 0, (int) (2 * blockSize));
         }
-//for (int i=0;i<PCJ.threadCount();++i) {
-//if (i==PCJ.myId())
-//System.out.println(PCJ.myId()+" blocks[]: " + java.util.Arrays.toString(blocks));
-//PCJ.barrier();
-//}
+
         PCJ.putLocal(blocks, Shareable.blocks);
     }
 
