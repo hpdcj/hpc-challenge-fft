@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -345,6 +346,7 @@ public class FFTscatter implements StartPoint {
      * @param blockSize
      */
     void allToAllPerform(double[] source, double[] dest, long blockSize) {
+// version 1:
 //        Map<Integer, double[]> toSendMap
 //                = IntStream.range(0, PCJ.threadCount())
 //                          .collect(HashMap::new,
@@ -354,15 +356,21 @@ public class FFTscatter implements StartPoint {
 //                                      m.put(i, toScatter);
 //                                  },
 //                                  Map::putAll);
+// version 2:
+//        Map<Integer, double[]> toSendMap = IntStream.range(0, PCJ.threadCount())
+//                .boxed()
+//                .collect(Collectors.toMap(
+//                        Function.identity(),
+//                        i -> {
+//                            double[] toScatter = new double[(int) (2 * blockSize)];
+//                            System.arraycopy(source, (int) (2 * i * blockSize), toScatter, 0, (int) (2 * blockSize));
+//                            return toScatter;
+//                        }));
         Map<Integer, double[]> toSendMap = IntStream.range(0, PCJ.threadCount())
-                .boxed()
-                .collect(Collectors.toMap(
-                        Function.identity(),
-                        i -> {
-                            double[] toScatter = new double[(int) (2 * blockSize)];
-                            System.arraycopy(source, (int) (2 * i * blockSize), toScatter, 0, (int) (2 * blockSize));
-                            return toScatter;
-                        }));
+                   .boxed()
+                   .collect(Collectors.toMap(
+                           Function.identity(),
+                           i -> Arrays.copyOfRange(source, (int) (2 * i * blockSize), (int) (2 * (i + 1) * blockSize))));
         PCJ.scatter(toSendMap, Shareable.blocks, PCJ.myId());
 
         PCJ.waitFor(Shareable.blocks, PCJ.threadCount());
